@@ -7,8 +7,13 @@ This configuration adds click-to-exit functionality for rofi on Wayland/Hyprland
 Make sure you have the following packages installed:
 
 ```bash
-# Core dependencies
+# Core dependencies (official repos)
 sudo pacman -S rofi slurp jq
+
+# AUR dependency (required for automatic cursor positioning)
+yay -S ydotool
+# OR
+paru -S ydotool
 ```
 
 ## Files
@@ -21,8 +26,10 @@ sudo pacman -S rofi slurp jq
 1. The launcher script starts the slurp monitor in the background
 2. Rofi opens normally
 3. Slurp creates an invisible overlay that covers the entire screen
-4. When you click anywhere outside rofi's bounds, slurp detects the click
-5. The monitor script automatically closes rofi
+4. ydotool moves cursor to the middle of your screen (to help prevent missed keystrokes)
+5. When you click anywhere outside rofi's bounds, slurp detects the click
+6. The monitor script automatically closes rofi
+7. If command is ran via rofi, monitor script ends
 
 ## Usage
 
@@ -90,6 +97,8 @@ When the overlay is active, you'll see a crosshair cursor outside rofi's bounds.
 - Test dimension parsing: `grep -A 20 "^window {" ~/.config/rofi/config.rasi`
 
 ## Known Limitations
+
+0. **Does not register keystrokes when cursor is outside of rofi window**: If you move your cursor outside of the rofi window, none of your keystrokes are registered. This is incredibly annoying (especially if using your mouse on the arm of a recliner), so now when you run the script, your cursor is moved to the very center of the screen.
 
 1. **Cursor appearance**: Outside rofi bounds, you'll see a crosshair cursor instead of your system cursor. This is a limitation of slurp.
 
