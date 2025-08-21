@@ -23,7 +23,7 @@ monitor_rofi_with_slurp() {
         sleep 0.01
     done
     
-    echo "Monitoring rofi PID: $rofi_pid"
+    echo "=== DEBUG: Monitoring rofi PID: $rofi_pid ==="
     
     # Get screen and rofi dimensions
     local screen_info=$(hyprctl monitors -j | jq -r '.[0] | "\(.width) \(.height)"' 2>/dev/null)
@@ -33,8 +33,12 @@ monitor_rofi_with_slurp() {
     local rofi_x=$(( (screen_w - rofi_width) / 2 ))
     local rofi_y=$(( (screen_h - rofi_height) / 2 ))
     
-    echo "Screen: ${screen_w}x${screen_h}"
-    echo "Rofi bounds: ${rofi_x},${rofi_y} ${rofi_width}x${rofi_height}"
+    echo "DEBUG: Screen: ${screen_w}x${screen_h}"
+    echo "DEBUG: Rofi bounds: ${rofi_x},${rofi_y} ${rofi_width}x${rofi_height}"
+    
+    # Check initial cursor position
+    local initial_cursor=$(hyprctl cursorpos 2>/dev/null)
+    echo "DEBUG: Initial cursor position: $initial_cursor"
     
     # Get current cursor theme from GTK settings (which Hyprland uses)
     local cursor_info=$(gsettings get org.gnome.desktop.interface cursor-theme 2>/dev/null | tr -d "'")
@@ -46,22 +50,46 @@ monitor_rofi_with_slurp() {
     
     echo "Using cursor theme: $cursor_info, size: $cursor_size"
     
-    # Use slurp with fully transparent background and system cursor theme
-    # Any interaction with slurp (click or drag) means user clicked outside rofi
-    XCURSOR_THEME="$cursor_info" XCURSOR_SIZE="$cursor_size" slurp -b '#00000000' -c '#00000000' -s '#00000000' >/dev/null 2>&1
-    local slurp_exit=$?
+    # Simple slurp overlay - no cursor manipulation during setup
+    XCURSOR_THEME="$cursor_info" XCURSOR_SIZE="$cursor_size" slurp -b '#00000000' -c '#00000000' -s '#00000000' >/dev/null 2>&1 &
+    local slurp_pid=$!
     
-    echo "Slurp interaction detected (exit: $slurp_exit)"
-    
-    # Check if rofi is still running
-    if ! kill -0 "$rofi_pid" 2>/dev/null; then
-        echo "Rofi already closed"
-        exit 0
+    # AFTER everything is set up, move cursor to screen center
+    # Start ydotool daemon if not running
+    if ! pgrep -x ydotoold >/dev/null; then
+        ydotoold &
+        sleep 0.3
     fi
     
-    # Any slurp interaction means click outside rofi, so close it
-    echo "User interacted with overlay, closing rofi"
-    kill "$rofi_pid" 2>/dev/null
+    # Move cursor to absolute center of screen based on resolution
+    local screen_center_x=$((screen_w / 2))  # 1920/2 = 960
+    local screen_center_y=$((screen_h / 2))  # 1080/2 = 540
+    
+    # Scale to ydotool coordinate system - need to find the right scaling
+    # We know 960,540 screen center should map to ydotool coords that put cursor at exact screen center
+    local ydotool_x=$((screen_center_x * 470 / 960))  # Adjust based on your feedback
+    local ydotool_y=$((screen_center_y * 260 / 540))  # Adjust based on your feedback
+    
+    ydotool mousemove --absolute -x "$ydotool_x" -y "$ydotool_y" 2>/dev/null
+    
+    # Monitor both rofi and slurp processes
+    while true; do
+        # Check if rofi is still running
+        if ! kill -0 "$rofi_pid" 2>/dev/null; then
+            echo "Rofi closed naturally, killing slurp"
+            kill "$slurp_pid" 2>/dev/null
+            break
+        fi
+        
+        # Check if slurp is still running (user interaction)
+        if ! kill -0 "$slurp_pid" 2>/dev/null; then
+            echo "Slurp interaction detected, closing rofi"
+            kill "$rofi_pid" 2>/dev/null
+            break
+        fi
+        
+        sleep 0.1
+    done
 }
 
 monitor_rofi_with_slurp
